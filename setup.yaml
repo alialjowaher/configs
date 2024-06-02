@@ -1,0 +1,113 @@
+---
+- name: Configure Debian 12
+  hosts: localhost
+  become: yes
+  vars:
+    ansible_user: alij
+    ansible_user_dir: /home/alij
+    neovim_version: "0.9.5"
+
+  tasks:
+    - name: Update and upgrade apt packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Install Zsh
+      apt:
+        name: zsh
+        state: present
+
+    - name: Change default shell to Zsh
+      user:
+        name: "{{ ansible_user }}"
+        shell: /usr/bin/zsh
+
+    - name: Install curl and git
+      apt:
+        name:
+          - curl
+          - git
+        state: present
+
+    - name: Install Oh My Zsh
+      become_user: "{{ ansible_user }}"
+      shell: "sh -c \"$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)\""
+      args:
+        executable: /bin/bash
+
+    - name: Install Powerlevel10k theme
+      become_user: "{{ ansible_user }}"
+      git:
+        repo: https://github.com/romkatv/powerlevel10k.git
+        dest: "{{ ansible_user_dir }}/.oh-my-zsh/custom/themes/powerlevel10k"
+
+    - name: Set Zsh theme to Powerlevel10k
+      become_user: "{{ ansible_user }}"
+      lineinfile:
+        path: "{{ ansible_user_dir }}/.zshrc"
+        regexp: '^ZSH_THEME='
+        line: 'ZSH_THEME="powerlevel10k/powerlevel10k"'
+        create: yes
+
+    - name: Install fzf
+      become_user: "{{ ansible_user }}"
+      shell: "git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install --all"
+      args:
+        executable: /bin/bash
+
+    - name: Install Zsh autosuggestions
+      become_user: "{{ ansible_user }}"
+      git:
+        repo: https://github.com/zsh-users/zsh-autosuggestions
+        dest: "{{ ansible_user_dir }}/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+
+    - name: Install bat
+      apt:
+        name: bat
+        state: present
+
+    - name: Set alias for batcat in .zshrc
+      become_user: "{{ ansible_user }}"
+      lineinfile:
+        path: "{{ ansible_user_dir }}/.zshrc"
+        line: 'alias cat="batcat"'
+        create: yes
+
+    - name: Configure fzf preview in .zshrc
+      become_user: "{{ ansible_user }}"
+      blockinfile:
+        path: "{{ ansible_user_dir }}/.zshrc"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK FOR FZF"
+        block: |
+          # fzf configuration for preview
+          export FZF_DEFAULT_OPTS="--preview 'batcat --style=numbers --color=always {} || cat {}'"
+          [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+    - name: Install tmux
+      apt:
+        name: tmux
+        state: present
+
+    - name: Install LSD package
+      apt:
+        name: lsd
+        state: present
+
+    - name: Download Neovim
+      get_url:
+        url: "https://github.com/neovim/neovim/releases/download/v{{ neovim_version }}/nvim.appimage"
+        dest: "{{ ansible_user_dir }}/nvim.appimage"
+        mode: 0755
+
+    - name: Install Neovim
+      shell: "{{ ansible_user_dir }}/nvim.appimage --appimage-extract && mv squashfs-root /opt/nvim"
+      args:
+        executable: /bin/bash
+        creates: /opt/nvim
+
+    - name: Create symbolic link for Neovim executable
+      file:
+        src: /opt/nvim/AppRun
+        dest: /usr/local/bin/nvim
+        state: link
